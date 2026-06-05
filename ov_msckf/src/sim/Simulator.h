@@ -140,6 +140,12 @@ protected:
   void generate_points(const Eigen::Matrix3d &R_GtoI, const Eigen::Vector3d &p_IinG, int camid,
                        std::unordered_map<size_t, Eigen::Vector3d> &feats, int numpts);
 
+  /**
+   * @brief Load a pre-built feature map from a flat text file ("id x y z" per line).
+   * Inserts each point into the internal featmap. Replaces random map generation.
+   */
+  void load_featmap_from_file(const std::string &path);
+
   //===================================================================
   // Configuration variables
   //===================================================================

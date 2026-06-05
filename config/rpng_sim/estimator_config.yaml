@@ -126,4 +126,5 @@ sim_distance_threshold: 1.1
 sim_freq_cam: 10
 sim_freq_imu: 400
 sim_min_feature_gen_dist: 5.0
-sim_max_feature_gen_dist: 7.0
+sim_max_feature_gen_dist: 30.0
+sim_feature_map_path: "/tmp/la_featmap_map3.txt"
