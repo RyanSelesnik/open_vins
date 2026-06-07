@@ -111,5 +111,9 @@
         </node>
     </group>
 
+    <!-- rviz on by default; pass rviz:=false to disable -->
+    <arg name="rviz" default="true" />
+    <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(find ov_msckf)/launch/display.rviz" required="false" />
 
 </launch>
