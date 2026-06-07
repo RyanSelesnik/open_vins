@@ -117,9 +117,12 @@ public:
   /// Access function to get the true parameters (i.e. calibration and settings)
   VioManagerOptions get_true_parameters() { return params; }
 
-protected:
   /**
    * @brief Projects the passed map features into the desired camera frame.
+   *
+   * Public so a live driver (e.g. run_subscribe_simulation) can compute
+   * camera-uv measurements at an arbitrary externally-provided IMU pose.
+   *
    * @param R_GtoI Orientation of the IMU pose
    * @param p_IinG Position of the IMU pose
    * @param camid Camera id of the camera sensor we want to project into
@@ -128,6 +131,8 @@ protected:
    */
   std::vector<std::pair<size_t, Eigen::VectorXf>> project_pointcloud(const Eigen::Matrix3d &R_GtoI, const Eigen::Vector3d &p_IinG,
                                                                      int camid, const std::unordered_map<size_t, Eigen::Vector3d> &feats);
+
+protected:
 
   /**
    * @brief Will generate points in the fov of the specified camera
