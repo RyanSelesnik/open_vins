@@ -50,10 +50,10 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
 #include <cv_bridge/cv_bridge.h>
+#include "utils/sensor_data.h"
 
 namespace ov_core {
 class YamlParser;
-struct CameraData;
 } // namespace ov_core
 
 namespace ov_msckf {
