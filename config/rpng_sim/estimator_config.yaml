@@ -127,4 +127,4 @@ sim_freq_cam: 10
 sim_freq_imu: 400
 sim_min_feature_gen_dist: 5.0
 sim_max_feature_gen_dist: 30.0
-sim_feature_map_path: "/tmp/la_featmap_map3.txt"
+sim_feature_map_path: "/Users/ryanselesnik/LA-Planner/open_vins/ov_data/sim/map2_featmap.txt"
