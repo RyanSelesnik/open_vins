@@ -186,6 +186,10 @@ int main(int argc, char **argv) {
   rclcpp::shutdown();
 #endif
 
-  // Done!
-  return EXIT_SUCCESS;
+  // Bypass global destructors. On macOS-libc++ a static-dtor mutex
+  // unlock aborts the process with SIGABRT (exit -6), which roslaunch
+  // treats as an abnormal termination and uses to tear down the whole
+  // launch group — taking rviz with it. _Exit skips dtors entirely,
+  // so the process returns 0 and rviz survives.
+  std::_Exit(EXIT_SUCCESS);
 }
