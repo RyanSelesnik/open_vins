@@ -139,6 +139,19 @@ int main(int argc, char **argv) {
   std::vector<int> buffer_camids;
   std::vector<std::vector<std::pair<size_t, Eigen::VectorXf>>> buffer_feats;
 
+  // Optional wall-clock throttle so rviz / human observers can see the
+  // trajectory unfold. `realtime_rate` = 0 (default) -> as fast as the
+  // CPU allows. 1.0 -> 1× wall-clock. 2.0 -> 2× faster than reality.
+#if ROS_AVAILABLE == 1
+  double realtime_rate = 0.0;
+  nh->param<double>("realtime_rate", realtime_rate, 0.0);
+#elif ROS_AVAILABLE == 2
+  double realtime_rate = 0.0;
+  node->get_parameter_or<double>("realtime_rate", realtime_rate, 0.0);
+#endif
+  double wall_t0 = -1.0;
+  double sim_t0 = sim->current_timestamp();
+
   // Step through the rosbag
 #if ROS_AVAILABLE == 1
   while (sim->ok() && ros::ok()) {
@@ -148,6 +161,28 @@ int main(int argc, char **argv) {
   signal(SIGINT, signal_callback_handler);
   while (sim->ok()) {
 #endif
+
+    // Throttle to wall clock if requested.
+    if (realtime_rate > 0.0) {
+#if ROS_AVAILABLE == 1
+      double wall_now = ros::WallTime::now().toSec();
+#elif ROS_AVAILABLE == 2
+      double wall_now = node->get_clock()->now().seconds();
+#else
+      double wall_now = 0.0;
+#endif
+      if (wall_t0 < 0) wall_t0 = wall_now;
+      double sim_elapsed = sim->current_timestamp() - sim_t0;
+      double target_wall = sim_elapsed / realtime_rate;
+      double wall_elapsed = wall_now - wall_t0;
+      if (target_wall > wall_elapsed) {
+#if ROS_AVAILABLE == 1
+        ros::WallDuration(target_wall - wall_elapsed).sleep();
+#elif ROS_AVAILABLE == 2
+        rclcpp::sleep_for(std::chrono::nanoseconds(static_cast<int64_t>((target_wall - wall_elapsed) * 1e9)));
+#endif
+      }
+    }
 
     // IMU: get the next simulated IMU measurement if we have it
     ov_core::ImuData message_imu;
