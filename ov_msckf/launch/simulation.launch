@@ -44,8 +44,17 @@
     <!-- ================================================================ -->
     <!-- ================================================================ -->
 
-    <!-- MASTER NODE! -->
-    <node name="ov_msckf" pkg="ov_msckf" type="run_simulation" output="screen" clear_params="true" required="true">
+    <!-- MASTER NODE!
+         required="false" so OV's macOS-libc++ shutdown mutex abort
+         (occurs after RMSE prints + traj files are written) does not
+         tear down rviz with it.
+         launch-prefix sleep gives rviz time to come up + subscribe
+         before sim publishes its Path / PointCloud2 (these topics are
+         not latched, and the sim itself runs in <1 wall-clock second
+         on the la_map2_traj.txt dataset). -->
+    <arg name="sim_start_delay" default="3" />
+    <node name="ov_msckf" pkg="ov_msckf" type="run_simulation" output="screen" clear_params="true" required="false"
+          launch-prefix="bash -c 'sleep $(arg sim_start_delay); exec &quot;$0&quot; &quot;$@&quot;'">
 <!--    <node name="ov_msckf" pkg="ov_msckf" type="run_simulation" output="screen" clear_params="true" required="true" launch-prefix="gdb -ex run &#45;&#45;args">-->
 
         <!-- =============================================== -->
