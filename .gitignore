@@ -8,3 +8,7 @@ doxgen_generated
 *.swo
 doc
 .vscode
+
+# LA-Planner-generated sim inputs (produced by `make record-map2`)
+ov_data/sim/la_*_traj.txt
+ov_data/sim/map*_featmap.txt
