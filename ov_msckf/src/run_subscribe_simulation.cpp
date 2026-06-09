@@ -52,7 +52,15 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr &msg) {
   m.timestamp = msg->header.stamp.toSec();
   if (m.timestamp <= 0.0) m.timestamp = ros::Time::now().toSec();
   m.wm << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
-  m.am << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
+  // LA-Planner's sim fills linear_acceleration with the TRUE world-frame
+  // acceleration (gravity already cancelled: acc_ = v_dot in Quadrotor.cpp).
+  // A real accelerometer measures body-frame specific force R_GtoI*(a_w + g).
+  // Reconstruct it using the attitude the sim ships in the same message,
+  // otherwise the propagator free-falls at -g.
+  Eigen::Quaterniond q_ItoG(msg->orientation.w, msg->orientation.x, msg->orientation.y, msg->orientation.z);
+  Eigen::Vector3d a_world(msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z);
+  Eigen::Vector3d gravity(0.0, 0.0, 9.81);  // matches sim g_ and gravity_mag in config
+  m.am = q_ItoG.toRotationMatrix().transpose() * (a_world + gravity);
   if (!filter_initialized) return;  // ignore IMU until we have a pose to init from
   sys->feed_measurement_imu(m);
   viz->visualize_odometry(m.timestamp);
