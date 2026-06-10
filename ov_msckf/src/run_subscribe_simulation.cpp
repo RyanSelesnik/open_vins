@@ -88,9 +88,17 @@ void odom_callback(const nav_msgs::Odometry::ConstPtr &msg) {
   Eigen::Matrix3d R_GtoI = R_ItoG.transpose();
   Eigen::Vector3d p_IinG(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
 
-  // Initialize filter from the very first odom message: stationary state,
-  // identity-ish biases. Real biases get estimated online from IMU residuals.
+  // Initialize filter from the first odom message of a SETTLED quad.
+  // Initializing mid-takeoff (fast node startup can race the takeoff
+  // transient) drops a fresh filter -- no clones, zero bias knowledge --
+  // straight into an aggressive-acceleration regime and it diverges within
+  // seconds. Require ~1 s of near-zero velocity first; both the on-ground
+  // wait and the post-takeoff hover satisfy it.
   if (!filter_initialized) {
+    Eigen::Vector3d v_init(msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z);
+    static int n_still = 0;
+    n_still = (v_init.norm() < 0.05) ? n_still + 1 : 0;
+    if (n_still < 200) return;  // 1 s at the 200 Hz odom rate
     Eigen::Matrix<double, 17, 1> imustate = Eigen::Matrix<double, 17, 1>::Zero();
     imustate(0, 0) = t - sim->get_true_parameters().calib_camimu_dt;
     // JPL quaternion convention: [qx, qy, qz, qw] for q_GtoI
