@@ -228,6 +228,12 @@ void VioManager::feed_measurement_simulation(double timestamp, const std::vector
       propagator->clean_old_imu_measurements(timestamp + state->_calib_dt_CAMtoIMU->value()(0) - 0.10);
       updaterZUPT->clean_old_imu_measurements(timestamp + state->_calib_dt_CAMtoIMU->value()(0) - 0.10);
       propagator->invalidate_cache();
+      // A ZUPT accept is a real update: without this, a filter that ZUPTs from
+      // its very first frame never sets timelastupdate, initialized() stays
+      // false, and the visualizer publishes no odometry at all (live consumers
+      // starve). The distance bookkeeping is unaffected: it only reads
+      // timelastupdate when a clone exists at that exact time.
+      timelastupdate = timestamp;
       return;
     }
   }
