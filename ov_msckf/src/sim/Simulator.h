@@ -132,6 +132,31 @@ public:
   std::vector<std::pair<size_t, Eigen::VectorXf>> project_pointcloud(const Eigen::Matrix3d &R_GtoI, const Eigen::Vector3d &p_IinG,
                                                                      int camid, const std::unordered_map<size_t, Eigen::Vector3d> &feats);
 
+  /**
+   * @brief Corrupt true uv projections with this simulator's pixel noise.
+   *
+   * Same noise model and RNG (gen_meas_cams, seeded by sim_seed_measurements)
+   * as get_next_cam(), exposed for live drivers that project at an external
+   * pose instead of stepping the internal spline.
+   *
+   * @param camid Camera id the measurements belong to
+   * @param uvs True (id, uv) projections to perturb in place
+   */
+  void perturb_camera_measurements(int camid, std::vector<std::pair<size_t, Eigen::VectorXf>> &uvs);
+
+  /**
+   * @brief Corrupt a true (wm, am) IMU sample with white noise + random-walk biases.
+   *
+   * Same noise model, RNG and bias state as get_next_imu(), exposed for live
+   * drivers feeding externally-generated IMU samples.
+   *
+   * @param timestamp Time of this sample (for the true-bias history)
+   * @param dt Time since the previous IMU sample [s]
+   * @param wm Angular velocity to perturb in place
+   * @param am Specific force to perturb in place
+   */
+  void perturb_imu_measurement(double timestamp, double dt, Eigen::Vector3d &wm, Eigen::Vector3d &am);
+
 protected:
 
   /**

@@ -7,8 +7,10 @@
  *
  * For every odom callback we re-project the loaded feature map into the
  * virtual camera at that pose and feed the resulting (id, uv) pairs into
- * the MSCKF as if a tracker had produced them. IMU samples go straight
- * through with no modification.
+ * the MSCKF as if a tracker had produced them. Both the uv measurements and
+ * the IMU samples are corrupted with the Simulator's own noise model
+ * (pixel noise, IMU white noise + random-walk biases), since LA-Planner's
+ * sim publishes noiseless ideal values.
  *
  * Topics (ROS 1):
  *   ~imu_topic         (default "/quadrotor_simulator_so3/imu"  sensor_msgs/Imu)
@@ -62,6 +64,11 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr &msg) {
   Eigen::Vector3d gravity(0.0, 0.0, 9.81);  // matches sim g_ and gravity_mag in config
   m.am = q_ItoG.toRotationMatrix().transpose() * (a_world + gravity);
   if (!filter_initialized) return;  // ignore IMU until we have a pose to init from
+  static double last_imu_time = -1.0;
+  double dt = (last_imu_time > 0) ? (m.timestamp - last_imu_time) : 0.005;
+  last_imu_time = m.timestamp;
+  if (dt <= 0) return;  // drop out-of-order/duplicate stamps
+  sim->perturb_imu_measurement(m.timestamp, dt, m.wm, m.am);
   sys->feed_measurement_imu(m);
   viz->visualize_odometry(m.timestamp);
   static int n_imu = 0;
@@ -121,6 +128,12 @@ void odom_callback(const nav_msgs::Odometry::ConstPtr &msg) {
   if (feats.empty()) {
     return;
   }
+
+  // Mirror get_next_cam: cap at num_pts (tracker budget), then add pixel noise
+  if ((int)feats.size() > sim->get_true_parameters().num_pts) {
+    feats.erase(feats.begin() + sim->get_true_parameters().num_pts, feats.end());
+  }
+  sim->perturb_camera_measurements(0, feats);
 
   std::vector<int> camids = {0};
   std::vector<std::vector<std::pair<size_t, Eigen::VectorXf>>> all_feats = {feats};

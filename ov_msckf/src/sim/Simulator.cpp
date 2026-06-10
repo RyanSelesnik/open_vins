@@ -531,6 +531,34 @@ std::vector<std::pair<size_t, Eigen::VectorXf>> Simulator::project_pointcloud(co
   return uvs;
 }
 
+void Simulator::perturb_camera_measurements(int camid, std::vector<std::pair<size_t, Eigen::VectorXf>> &uvs) {
+  std::normal_distribution<double> w(0, 1);
+  for (auto &uv : uvs) {
+    uv.second(0) += params.msckf_options.sigma_pix * w(gen_meas_cams.at(camid));
+    uv.second(1) += params.msckf_options.sigma_pix * w(gen_meas_cams.at(camid));
+  }
+}
+
+void Simulator::perturb_imu_measurement(double timestamp, double dt, Eigen::Vector3d &wm, Eigen::Vector3d &am) {
+  std::normal_distribution<double> w(0, 1);
+  if (has_skipped_first_bias) {
+    true_bias_gyro(0) += params.imu_noises.sigma_wb * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_gyro(1) += params.imu_noises.sigma_wb * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_gyro(2) += params.imu_noises.sigma_wb * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_accel(0) += params.imu_noises.sigma_ab * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_accel(1) += params.imu_noises.sigma_ab * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_accel(2) += params.imu_noises.sigma_ab * std::sqrt(dt) * w(gen_meas_imu);
+    hist_true_bias_time.push_back(timestamp);
+    hist_true_bias_gyro.push_back(true_bias_gyro);
+    hist_true_bias_accel.push_back(true_bias_accel);
+  }
+  has_skipped_first_bias = true;
+  for (int i = 0; i < 3; i++) {
+    wm(i) += true_bias_gyro(i) + params.imu_noises.sigma_w / std::sqrt(dt) * w(gen_meas_imu);
+    am(i) += true_bias_accel(i) + params.imu_noises.sigma_a / std::sqrt(dt) * w(gen_meas_imu);
+  }
+}
+
 void Simulator::generate_points(const Eigen::Matrix3d &R_GtoI, const Eigen::Vector3d &p_IinG, int camid,
                                 std::unordered_map<size_t, Eigen::Vector3d> &feats, int numpts) {
 
