@@ -106,6 +106,17 @@ public:
   /// Returns the true 3d map of features
   std::unordered_map<size_t, Eigen::Vector3d> get_map() { return featmap; }
 
+  /// Wipe the internal feature map. Used by the live driver to clear the
+  /// constructor's random-gen map before populating from a published cloud.
+  void clear_map() { featmap.clear(); }
+
+  /// Replace the internal feature map with the given world-frame points.
+  /// Points within `eps` of an existing entry retain that entry's ID so
+  /// MSCKF feature tracks stay consistent across updates. Truly new points
+  /// get fresh IDs from `id_map`. Used by the live driver to ingest the
+  /// planner-published incremental feature cloud.
+  void set_featmap_from_points(const std::vector<Eigen::Vector3d> &pts, double eps = 0.05);
+
   /// Returns the true 3d map of features
   std::vector<Eigen::Vector3d> get_map_vec() {
     std::vector<Eigen::Vector3d> feats;

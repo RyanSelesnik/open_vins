@@ -33,6 +33,8 @@
 #include "ros/ROS1Visualizer.h"
 #include <ros/ros.h>
 #include <sensor_msgs/Imu.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/point_cloud2_iterator.h>
 #include <nav_msgs/Odometry.h>
 
 using namespace ov_msckf;
@@ -149,6 +151,30 @@ void odom_callback(const nav_msgs::Odometry::ConstPtr &msg) {
   viz->visualize();
 }
 
+void featmap_callback(const sensor_msgs::PointCloud2::ConstPtr &msg) {
+  // Convert sensor_msgs/PointCloud2 -> std::vector<Vector3d>, hand to Simulator.
+  // The planner publishes /feature/feature_map as a cumulative cloud of
+  // every 3D feature it has observed so far (line-of-sight + FOV checked
+  // by LA-Planner side). We replace the bridge's internal featmap with this
+  // each time the cloud updates. set_featmap_from_points preserves IDs for
+  // points within eps of existing entries so MSCKF tracks stay coherent.
+  std::vector<Eigen::Vector3d> pts;
+  pts.reserve(msg->width * msg->height);
+  sensor_msgs::PointCloud2ConstIterator<float> ix(*msg, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> iy(*msg, "y");
+  sensor_msgs::PointCloud2ConstIterator<float> iz(*msg, "z");
+  for (; ix != ix.end(); ++ix, ++iy, ++iz) {
+    pts.emplace_back(*ix, *iy, *iz);
+  }
+  if (pts.empty()) return;
+  sim->set_featmap_from_points(pts);
+  static int n = 0;
+  if (++n == 1 || n % 50 == 0) {
+    PRINT_INFO(CYAN "[SUB-SIM]: featmap update #%d: %zu pts in, %zu pts internal\n" RESET,
+               n, pts.size(), sim->get_map().size());
+  }
+}
+
 void signal_callback_handler(int /*signum*/) { ros::shutdown(); }
 
 }  // namespace
@@ -184,20 +210,37 @@ int main(int argc, char **argv) {
   }
 
   // Topic params + rate
-  std::string imu_topic, odom_topic;
+  std::string imu_topic, odom_topic, featmap_topic;
   double cam_rate_hz = 10.0;
-  nh->param<std::string>("imu_topic",  imu_topic,  "/quadrotor_simulator_so3/imu");
-  nh->param<std::string>("odom_topic", odom_topic, "/state_ukf/odom");
-  nh->param<double>("cam_rate_hz", cam_rate_hz, 10.0);
+  bool featmap_subscribe = false;
+  nh->param<std::string>("imu_topic",       imu_topic,       "/quadrotor_simulator_so3/imu");
+  nh->param<std::string>("odom_topic",      odom_topic,      "/state_ukf/odom");
+  nh->param<std::string>("featmap_topic",   featmap_topic,   "/feature/feature_map");
+  nh->param<bool>("featmap_subscribe",      featmap_subscribe, false);
+  nh->param<double>("cam_rate_hz",          cam_rate_hz,     10.0);
   cam_period = 1.0 / cam_rate_hz;
 
-  PRINT_INFO(GREEN "[SUB-SIM]: imu_topic=%s odom_topic=%s cam_rate=%.1fHz featmap=%lu pts\n" RESET,
-             imu_topic.c_str(), odom_topic.c_str(), cam_rate_hz, sim->get_map().size());
+  // If we're subscribing for the featmap, wipe the constructor's random map
+  // (the random ones live inside the spline's bounding region, unrelated to
+  // LA-Planner's scene). The cloud subscriber will populate from /feature/feature_map.
+  if (featmap_subscribe) {
+    sim->clear_map();
+    PRINT_INFO(YELLOW "[SUB-SIM]: featmap mode = LIVE SUBSCRIBE (topic %s) — internal map cleared\n" RESET,
+               featmap_topic.c_str());
+  }
+
+  PRINT_INFO(GREEN "[SUB-SIM]: imu_topic=%s odom_topic=%s cam_rate=%.1fHz featmap=%lu pts (mode=%s)\n" RESET,
+             imu_topic.c_str(), odom_topic.c_str(), cam_rate_hz, sim->get_map().size(),
+             featmap_subscribe ? "subscribe" : "static");
 
   signal(SIGINT, signal_callback_handler);
 
   ros::Subscriber sub_imu  = nh->subscribe(imu_topic,  500, imu_callback);
   ros::Subscriber sub_odom = nh->subscribe(odom_topic, 100, odom_callback);
+  ros::Subscriber sub_fmap;
+  if (featmap_subscribe) {
+    sub_fmap = nh->subscribe(featmap_topic, 5, featmap_callback);
+  }
 
   ros::spin();
 

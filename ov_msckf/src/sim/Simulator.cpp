@@ -219,6 +219,27 @@ Simulator::Simulator(VioManagerOptions &params_) {
   }
 }
 
+void Simulator::set_featmap_from_points(const std::vector<Eigen::Vector3d> &pts, double eps) {
+  if (pts.empty()) { featmap.clear(); return; }
+  std::unordered_map<size_t, Eigen::Vector3d> new_map;
+  new_map.reserve(pts.size());
+  const double eps2 = eps * eps;
+  for (const auto &p : pts) {
+    bool matched = false;
+    for (const auto &kv : featmap) {
+      if ((p - kv.second).squaredNorm() < eps2) {
+        new_map[kv.first] = p;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      new_map[id_map++] = p;
+    }
+  }
+  featmap = std::move(new_map);
+}
+
 void Simulator::load_featmap_from_file(const std::string &path) {
   std::ifstream file(path);
   if (!file.is_open()) {
