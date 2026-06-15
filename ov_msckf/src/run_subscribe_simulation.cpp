@@ -246,5 +246,14 @@ int main(int argc, char **argv) {
 
   viz->visualize_final();
   ros::shutdown();
-  return EXIT_SUCCESS;
+
+  // Bypass global destructors. On macOS-libc++ a static-dtor mutex
+  // unlock aborts the process with SIGABRT (exit -6), which roslaunch
+  // treats as an abnormal termination and uses to tear down the whole
+  // launch group — taking rviz with it. _Exit skips dtors entirely,
+  // so the process returns 0 and rviz survives.
+  // Mirror of 5300714 (run_simulation.cpp:229) — that fix was never
+  // ported to the live-subscribe driver and so closed-loop Ctrl-C
+  // wedges rviz on macOS even though run_simulation exits cleanly.
+  std::_Exit(EXIT_SUCCESS);
 }
