@@ -536,6 +536,11 @@ struct VioManagerOptions {
   /// Feature distance we generate features from (maximum)
   double sim_max_feature_gen_distance = 10;
 
+  /// Optional path to a pre-built feature map file (flat text "id x y z" per line).
+  /// When set, the simulator skips random feature generation and uses ONLY the
+  /// supplied 3D points as the world feature map. Empty = original random behavior.
+  std::string sim_feature_map_path = "";
+
   /**
    * @brief This function will load print out all simulated parameters.
    * This allows for visual checking that everything was loaded properly from ROS/CMD parsers.
@@ -554,6 +559,7 @@ struct VioManagerOptions {
       parser->parse_config("sim_freq_imu", sim_freq_imu);
       parser->parse_config("sim_min_feature_gen_dist", sim_min_feature_gen_distance);
       parser->parse_config("sim_max_feature_gen_dist", sim_max_feature_gen_distance);
+      parser->parse_config("sim_feature_map_path", sim_feature_map_path);
     }
     PRINT_DEBUG("SIMULATION PARAMETERS:\n");
     PRINT_WARNING(BOLDRED "  - state init seed: %d \n" RESET, sim_seed_state_init);
@@ -566,6 +572,7 @@ struct VioManagerOptions {
     PRINT_DEBUG("  - imu feq: %.2f\n", sim_freq_imu);
     PRINT_DEBUG("  - min feat dist: %.2f\n", sim_min_feature_gen_distance);
     PRINT_DEBUG("  - max feat dist: %.2f\n", sim_max_feature_gen_distance);
+    PRINT_DEBUG("  - feature map path: %s\n", sim_feature_map_path.empty() ? "<random>" : sim_feature_map_path.c_str());
   }
 };
 

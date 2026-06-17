@@ -117,9 +117,12 @@ public:
   /// Access function to get the true parameters (i.e. calibration and settings)
   VioManagerOptions get_true_parameters() { return params; }
 
-protected:
   /**
    * @brief Projects the passed map features into the desired camera frame.
+   *
+   * Public so a live driver (e.g. run_subscribe_simulation) can compute
+   * camera-uv measurements at an arbitrary externally-provided IMU pose.
+   *
    * @param R_GtoI Orientation of the IMU pose
    * @param p_IinG Position of the IMU pose
    * @param camid Camera id of the camera sensor we want to project into
@@ -128,6 +131,33 @@ protected:
    */
   std::vector<std::pair<size_t, Eigen::VectorXf>> project_pointcloud(const Eigen::Matrix3d &R_GtoI, const Eigen::Vector3d &p_IinG,
                                                                      int camid, const std::unordered_map<size_t, Eigen::Vector3d> &feats);
+
+  /**
+   * @brief Corrupt true uv projections with this simulator's pixel noise.
+   *
+   * Same noise model and RNG (gen_meas_cams, seeded by sim_seed_measurements)
+   * as get_next_cam(), exposed for live drivers that project at an external
+   * pose instead of stepping the internal spline.
+   *
+   * @param camid Camera id the measurements belong to
+   * @param uvs True (id, uv) projections to perturb in place
+   */
+  void perturb_camera_measurements(int camid, std::vector<std::pair<size_t, Eigen::VectorXf>> &uvs);
+
+  /**
+   * @brief Corrupt a true (wm, am) IMU sample with white noise + random-walk biases.
+   *
+   * Same noise model, RNG and bias state as get_next_imu(), exposed for live
+   * drivers feeding externally-generated IMU samples.
+   *
+   * @param timestamp Time of this sample (for the true-bias history)
+   * @param dt Time since the previous IMU sample [s]
+   * @param wm Angular velocity to perturb in place
+   * @param am Specific force to perturb in place
+   */
+  void perturb_imu_measurement(double timestamp, double dt, Eigen::Vector3d &wm, Eigen::Vector3d &am);
+
+protected:
 
   /**
    * @brief Will generate points in the fov of the specified camera
@@ -139,6 +169,12 @@ protected:
    */
   void generate_points(const Eigen::Matrix3d &R_GtoI, const Eigen::Vector3d &p_IinG, int camid,
                        std::unordered_map<size_t, Eigen::Vector3d> &feats, int numpts);
+
+  /**
+   * @brief Load a pre-built feature map from a flat text file ("id x y z" per line).
+   * Inserts each point into the internal featmap. Replaces random map generation.
+   */
+  void load_featmap_from_file(const std::string &path);
 
   //===================================================================
   // Configuration variables

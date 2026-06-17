@@ -21,6 +21,9 @@
 
 #include "Simulator.h"
 
+#include <fstream>
+#include <sstream>
+
 #include "cam/CamBase.h"
 #include "cam/CamEqui.h"
 #include "cam/CamRadtan.h"
@@ -159,51 +162,81 @@ Simulator::Simulator(VioManagerOptions &params_) {
   //===============================================================
   //===============================================================
 
-  // We will create synthetic camera frames and ensure that each has enough features
-  // double dt = 0.25/freq_cam;
-  double dt = 0.25;
-  size_t mapsize = featmap.size();
-  PRINT_DEBUG("[SIM]: Generating map features at %d rate\n", (int)(1.0 / dt));
+  // If a feature-map file path was supplied, load the world feature map from disk
+  // and skip random feature generation entirely. The simulator will project
+  // ONLY these pre-loaded 3D points into the cameras (subject to FOV / depth).
+  if (!params.sim_feature_map_path.empty()) {
+    load_featmap_from_file(params.sim_feature_map_path);
+    PRINT_DEBUG("[SIM]: Loaded %d features from %s (skipping random gen)\n",
+                (int)featmap.size(), params.sim_feature_map_path.c_str());
+    sleep(1);
+  } else {
+    // We will create synthetic camera frames and ensure that each has enough features
+    // double dt = 0.25/freq_cam;
+    double dt = 0.25;
+    size_t mapsize = featmap.size();
+    PRINT_DEBUG("[SIM]: Generating map features at %d rate\n", (int)(1.0 / dt));
 
-  // Loop through each camera
-  // NOTE: we loop through cameras here so that the feature map for camera 1 will always be the same
-  // NOTE: thus when we add more cameras the first camera should get the same measurements
-  for (int i = 0; i < params.state_options.num_cameras; i++) {
+    // Loop through each camera
+    // NOTE: we loop through cameras here so that the feature map for camera 1 will always be the same
+    // NOTE: thus when we add more cameras the first camera should get the same measurements
+    for (int i = 0; i < params.state_options.num_cameras; i++) {
 
-    // Reset the start time
-    double time_synth = spline->get_start_time();
+      // Reset the start time
+      double time_synth = spline->get_start_time();
 
-    // Loop through each pose and generate our feature map in them!!!!
-    while (true) {
+      // Loop through each pose and generate our feature map in them!!!!
+      while (true) {
 
-      // Get the pose at the current timestep
-      Eigen::Matrix3d R_GtoI;
-      Eigen::Vector3d p_IinG;
-      bool success_pose = spline->get_pose(time_synth, R_GtoI, p_IinG);
+        // Get the pose at the current timestep
+        Eigen::Matrix3d R_GtoI;
+        Eigen::Vector3d p_IinG;
+        bool success_pose = spline->get_pose(time_synth, R_GtoI, p_IinG);
 
-      // We have finished generating features
-      if (!success_pose)
-        break;
+        // We have finished generating features
+        if (!success_pose)
+          break;
 
-      // Get the uv features for this frame
-      std::vector<std::pair<size_t, Eigen::VectorXf>> uvs = project_pointcloud(R_GtoI, p_IinG, i, featmap);
-      // If we do not have enough, generate more
-      if ((int)uvs.size() < params.num_pts) {
-        generate_points(R_GtoI, p_IinG, i, featmap, params.num_pts - (int)uvs.size());
+        // Get the uv features for this frame
+        std::vector<std::pair<size_t, Eigen::VectorXf>> uvs = project_pointcloud(R_GtoI, p_IinG, i, featmap);
+        // If we do not have enough, generate more
+        if ((int)uvs.size() < params.num_pts) {
+          generate_points(R_GtoI, p_IinG, i, featmap, params.num_pts - (int)uvs.size());
+        }
+
+        // Move forward in time
+        time_synth += dt;
       }
 
-      // Move forward in time
-      time_synth += dt;
+      // Debug print
+      PRINT_DEBUG("[SIM]: Generated %d map features in total over %d frames (camera %d)\n", (int)(featmap.size() - mapsize),
+                  (int)((time_synth - spline->get_start_time()) / dt), i);
+      mapsize = featmap.size();
     }
 
-    // Debug print
-    PRINT_DEBUG("[SIM]: Generated %d map features in total over %d frames (camera %d)\n", (int)(featmap.size() - mapsize),
-                (int)((time_synth - spline->get_start_time()) / dt), i);
-    mapsize = featmap.size();
+    // Nice sleep so the user can look at the printout
+    sleep(1);
   }
+}
 
-  // Nice sleep so the user can look at the printout
-  sleep(1);
+void Simulator::load_featmap_from_file(const std::string &path) {
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    PRINT_ERROR(RED "[SIM]: Failed to open feature map file: %s\n" RESET, path.c_str());
+    return;
+  }
+  std::string line;
+  size_t loaded = 0;
+  while (std::getline(file, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream iss(line);
+    size_t id;
+    double x, y, z;
+    if (!(iss >> id >> x >> y >> z)) continue;
+    featmap.insert({id, Eigen::Vector3d(x, y, z)});
+    ++loaded;
+  }
+  PRINT_DEBUG("[SIM]: load_featmap_from_file: %d points\n", (int)loaded);
 }
 
 void Simulator::perturb_parameters(std::mt19937 gen_state, VioManagerOptions &params_) {
@@ -496,6 +529,34 @@ std::vector<std::pair<size_t, Eigen::VectorXf>> Simulator::project_pointcloud(co
 
   // Return our projections
   return uvs;
+}
+
+void Simulator::perturb_camera_measurements(int camid, std::vector<std::pair<size_t, Eigen::VectorXf>> &uvs) {
+  std::normal_distribution<double> w(0, 1);
+  for (auto &uv : uvs) {
+    uv.second(0) += params.msckf_options.sigma_pix * w(gen_meas_cams.at(camid));
+    uv.second(1) += params.msckf_options.sigma_pix * w(gen_meas_cams.at(camid));
+  }
+}
+
+void Simulator::perturb_imu_measurement(double timestamp, double dt, Eigen::Vector3d &wm, Eigen::Vector3d &am) {
+  std::normal_distribution<double> w(0, 1);
+  if (has_skipped_first_bias) {
+    true_bias_gyro(0) += params.imu_noises.sigma_wb * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_gyro(1) += params.imu_noises.sigma_wb * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_gyro(2) += params.imu_noises.sigma_wb * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_accel(0) += params.imu_noises.sigma_ab * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_accel(1) += params.imu_noises.sigma_ab * std::sqrt(dt) * w(gen_meas_imu);
+    true_bias_accel(2) += params.imu_noises.sigma_ab * std::sqrt(dt) * w(gen_meas_imu);
+    hist_true_bias_time.push_back(timestamp);
+    hist_true_bias_gyro.push_back(true_bias_gyro);
+    hist_true_bias_accel.push_back(true_bias_accel);
+  }
+  has_skipped_first_bias = true;
+  for (int i = 0; i < 3; i++) {
+    wm(i) += true_bias_gyro(i) + params.imu_noises.sigma_w / std::sqrt(dt) * w(gen_meas_imu);
+    am(i) += true_bias_accel(i) + params.imu_noises.sigma_a / std::sqrt(dt) * w(gen_meas_imu);
+  }
 }
 
 void Simulator::generate_points(const Eigen::Matrix3d &R_GtoI, const Eigen::Vector3d &p_IinG, int camid,

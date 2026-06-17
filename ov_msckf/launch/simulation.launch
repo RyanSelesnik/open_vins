@@ -24,7 +24,13 @@
 
     <arg name="freq_cam"    default="10" />
     <arg name="freq_imu"    default="400" />
+    <!-- Wall-clock throttle. 0 = as fast as CPU; 1.0 = real time; 2.0 = 2x. -->
+    <arg name="realtime_rate" default="0.0" />
     <arg name="dataset"    default="tum_corridor1_512_16_okvis.txt" /> <!-- udel_gore, udel_gore_zupt, tum_corridor1_512_16_okvis, udel_arl -->
+    <!-- Pre-built scene feature map (id x y z). Empty = procedural feature
+         generation (vanilla OV). Set to a filename under ov_data/sim/ to
+         drive the sim against a real scene (e.g. map2_featmap.txt). -->
+    <arg name="featmap"    default="" />
 
     <!-- if we should perturb the initial state values (i.e. calibration) -->
     <arg name="sim_do_perturbation"             default="true" />
@@ -44,8 +50,17 @@
     <!-- ================================================================ -->
     <!-- ================================================================ -->
 
-    <!-- MASTER NODE! -->
-    <node name="ov_msckf" pkg="ov_msckf" type="run_simulation" output="screen" clear_params="true" required="true">
+    <!-- MASTER NODE!
+         required="false" so OV's macOS-libc++ shutdown mutex abort
+         (occurs after RMSE prints + traj files are written) does not
+         tear down rviz with it.
+         launch-prefix sleep gives rviz time to come up + subscribe
+         before sim publishes its Path / PointCloud2 (these topics are
+         not latched, and the sim itself runs in <1 wall-clock second
+         on the la_map2_traj.txt dataset). -->
+    <arg name="sim_start_delay" default="3" />
+    <node name="ov_msckf" pkg="ov_msckf" type="run_simulation" output="screen" clear_params="true" required="false"
+          launch-prefix="bash -c 'sleep $(arg sim_start_delay); exec &quot;$0&quot; &quot;$@&quot;'">
 <!--    <node name="ov_msckf" pkg="ov_msckf" type="run_simulation" output="screen" clear_params="true" required="true" launch-prefix="gdb -ex run &#45;&#45;args">-->
 
         <!-- =============================================== -->
@@ -58,6 +73,8 @@
         <param name="sim_seed_preturb"       type="int"    value="$(arg seed)" />
         <param name="sim_freq_cam"           type="int"    value="$(arg freq_cam)" />
         <param name="sim_freq_imu"           type="int"    value="$(arg freq_imu)" />
+        <param name="realtime_rate"          type="double" value="$(arg realtime_rate)" />
+        <param name="sim_feature_map_path"   type="str"    value="$(eval find('ov_data') + '/sim/' + arg('featmap') if arg('featmap') else '')" />
         <param name="sim_do_perturbation"    type="bool"   value="$(arg sim_do_perturbation)" />
 
         <param name="sim_min_feature_gen_dist" type="double" value="$(arg feat_dist_min)" />
@@ -111,5 +128,9 @@
         </node>
     </group>
 
+    <!-- rviz on by default; pass rviz:=false to disable -->
+    <arg name="rviz" default="true" />
+    <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(find ov_msckf)/launch/display.rviz" required="false" />
 
 </launch>
